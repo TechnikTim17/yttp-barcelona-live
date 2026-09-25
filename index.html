@@ -57,6 +57,11 @@
   .words{display:flex; flex-wrap:wrap; gap:10px; align-items:baseline}
   .word{color:var(--anthrazit); font-weight:700}
   .count{font-size:13px; color:var(--taupe); margin-top:6px}
+  .leader{font-size:24px; font-weight:700; letter-spacing:-.01em; margin:2px 0 8px; text-wrap:balance}
+  .big-bar{padding:20px 16px; font-size:19px}
+  .big-bar .pct{font-size:16px}
+  .opt.lead{border-color:var(--orange); box-shadow:inset 0 0 0 2px var(--orange)}
+  .fill.leadfill{background:var(--orange); opacity:.20}
   .center{text-align:center}
   .big{font-size:40px; font-weight:700; letter-spacing:-.02em; margin:.1em 0}
   .qr{background:#fff; padding:14px; border-radius:2px; display:inline-block; margin-top:8px}
@@ -255,25 +260,38 @@ async function renderWall(){
 
 async function renderVote(){
   app.innerHTML="";
-  app.appendChild(el(head("Publikumsvoting","Welche Vision überzeugt dich am meisten?")));
+  app.appendChild(el(head("Publikumsvoting","Who´s the winner?")));
   const rows=await voteCounts();
-  const total=rows.length||1;
+  const total=rows.length;
   const counts={}; GROUPS.forEach(g=>counts[g]=0);
   rows.forEach(r=>{ if(counts[r.choice]!==undefined) counts[r.choice]++; });
-  const box=el(`<div class="stack"></div>`);
-  GROUPS.forEach(g=>{
-    const pct=Math.round((counts[g]/total)*100);
-    if(isMod){
-      box.appendChild(el(`<div class="opt bar"><span class="fill" style="width:${pct}%"></span><span class="lab"><span>${g}</span><span class="pct">${counts[g]} · ${pct}%</span></span></div>`));
-    }else{
+  const max=Math.max(0,...GROUPS.map(g=>counts[g]));
+  const leaders=GROUPS.filter(g=>counts[g]===max && max>0);
+
+  if(isMod){
+    const banner = total===0 ? "Noch keine Stimmen"
+      : (leaders.length===1 ? "Führt: "+leaders[0] : "Kopf an Kopf: "+leaders.join(" · "));
+    app.appendChild(el(`<div class="leader">${banner}</div>`));
+    const box=el(`<div class="stack"></div>`);
+    GROUPS.slice().sort((a,b)=>counts[b]-counts[a]).forEach(g=>{
+      const pct=total?Math.round((counts[g]/total)*100):0;
+      const lead=counts[g]===max && max>0;
+      box.appendChild(el(`<div class="opt bar big-bar${lead?" lead":""}"><span class="fill${lead?" leadfill":""}" style="width:${pct}%"></span><span class="lab"><span>${g}</span><span class="pct">${counts[g]} · ${pct}%</span></span></div>`));
+    });
+    app.appendChild(box);
+    app.appendChild(el(`<div class="count">${total} Stimmen</div>`));
+  }else{
+    const box=el(`<div class="stack"></div>`);
+    GROUPS.forEach(g=>{
+      const pct=total?Math.round((counts[g]/total)*100):0;
       const voted=mine.vote===g;
       const b=el(`<button class="opt${voted?" sel":""}"><span>${g}</span>${mine.vote?`<span class="pct">${pct}%</span>`:""}</button>`);
       b.onclick=async()=>{ mine.vote=g; try{ await sb.from("bcn_votes").upsert({client_id:CID,choice:g},{onConflict:"client_id"}); }catch(e){} render(); };
       box.appendChild(b);
-    }
-  });
-  app.appendChild(box);
-  app.appendChild(el(`<div class="count">${rows.length} Stimmen${isMod?"":" · du kannst deine Stimme ändern"}</div>`));
+    });
+    app.appendChild(box);
+    app.appendChild(el(`<div class="count">${total} Stimmen · du kannst deine Stimme ändern</div>`));
+  }
 }
 
 async function renderQuiz(){
