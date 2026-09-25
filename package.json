@@ -1,0 +1,12 @@
+{
+  "name": "yttp-barcelona-live",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wegwerfbares Live Tool fuer den AI Workshop Barcelona 2026. Nach der Reise loeschen.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
