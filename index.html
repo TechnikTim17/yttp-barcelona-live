@@ -235,7 +235,7 @@ async function renderPoll(){
 async function submitPoll(q,v){
   mine.polls[q]=v;
   try{ await sb.from("bcn_poll_responses").upsert({client_id:CID,question:q,value:v},{onConflict:"client_id,question"}); }catch(e){}
-  render();
+  refresh(true);
 }
 
 async function renderWall(){
@@ -286,7 +286,7 @@ async function renderVote(){
       const pct=total?Math.round((counts[g]/total)*100):0;
       const voted=mine.vote===g;
       const b=el(`<button class="opt${voted?" sel":""}"><span>${g}</span>${mine.vote?`<span class="pct">${pct}%</span>`:""}</button>`);
-      b.onclick=async()=>{ mine.vote=g; try{ await sb.from("bcn_votes").upsert({client_id:CID,choice:g},{onConflict:"client_id"}); }catch(e){} render(); };
+      b.onclick=async()=>{ mine.vote=g; try{ await sb.from("bcn_votes").upsert({client_id:CID,choice:g},{onConflict:"client_id"}); }catch(e){} refresh(true); };
       box.appendChild(b);
     });
     app.appendChild(box);
@@ -310,7 +310,7 @@ async function renderQuiz(){
     const pct=Math.round((cnt/total)*100);
     if(!answered && !isMod && !reveal){
       const b=el(`<button class="opt"><span>${o}</span></button>`);
-      b.onclick=async()=>{ mine.quiz[qi]=idx; try{ await sb.from("bcn_quiz_answers").upsert({client_id:CID,q_index:qi,choice:idx,is_correct:isRight},{onConflict:"client_id,q_index"}); }catch(e){} render(); };
+      b.onclick=async()=>{ mine.quiz[qi]=idx; try{ await sb.from("bcn_quiz_answers").upsert({client_id:CID,q_index:qi,choice:idx,is_correct:isRight},{onConflict:"client_id,q_index"}); }catch(e){} refresh(true); };
       box.appendChild(b);
     }else{
       let cls="opt"; let mark="";
@@ -334,6 +334,25 @@ function renderThanks(){
 
 function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function busyTyping(){ const a=document.activeElement; return !!(a && a.tagName==="INPUT" && a.type==="text"); }
+
+// Nur neu rendern, wenn sich Buehne oder sichtbare Daten geaendert haben (verhindert Flackern)
+let _sig="";
+function stateSig(){ return [STATE.stage,STATE.poll_index,STATE.quiz_index,STATE.quiz_reveal].join("|"); }
+async function stageDataCount(){
+  try{
+    if(STATE.stage==="poll"){ const p=POLLS[STATE.poll_index]; if(!p) return "p-"; const r=await sb.from("bcn_poll_responses").select("id",{count:"exact",head:true}).eq("question",p.q); return "p"+STATE.poll_index+":"+(r.count||0); }
+    if(STATE.stage==="wall"){ const r=await sb.from("bcn_ideas").select("id",{count:"exact",head:true}); return "w:"+(r.count||0); }
+    if(STATE.stage==="vote"){ const r=await sb.from("bcn_votes").select("client_id",{count:"exact",head:true}); return "v:"+(r.count||0); }
+    if(STATE.stage==="quiz"){ const r=await sb.from("bcn_quiz_answers").select("id",{count:"exact",head:true}).eq("q_index",STATE.quiz_index); return "q"+STATE.quiz_index+":"+(r.count||0); }
+  }catch(e){}
+  return STATE.stage;
+}
+async function refresh(force){
+  if(!force && busyTyping()) return;
+  const cnt=await stageDataCount();
+  const sig=stateSig()+"#"+cnt+"#"+(isMod?"m":"p");
+  if(force || sig!==_sig){ _sig=sig; if(isMod) renderModbar(); render(); }
+}
 
 // ---- moderator ----
 function renderModbar(){
@@ -373,8 +392,7 @@ async function modAct(a){
 async function patch(obj){
   Object.assign(STATE,obj);
   try{ await sb.from("bcn_state").update({...obj,updated_at:new Date().toISOString()}).eq("id","main"); }catch(e){}
-  if(isMod) renderModbar();
-  render();
+  await refresh(true);
 }
 
 // ---- realtime + boot ----
@@ -385,27 +403,25 @@ async function fetchState(){
 function subscribe(){
   sb.channel("bcn")
     .on("postgres_changes",{event:"*",schema:"public",table:"bcn_state"},payload=>{
-      if(payload.new){ STATE=payload.new; if(isMod) renderModbar(); render(); }
+      if(payload.new){ STATE=payload.new; refresh(true); }
     })
-    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_poll_responses"},()=>{ if(STATE.stage==="poll" && !busyTyping()) render(); })
-    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_ideas"},()=>{ if(STATE.stage==="wall" && !busyTyping()) render(); })
-    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_votes"},()=>{ if(STATE.stage==="vote") render(); })
-    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_quiz_answers"},()=>{ if(STATE.stage==="quiz") render(); })
+    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_poll_responses"},()=>{ if(STATE.stage==="poll") refresh(); })
+    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_ideas"},()=>{ if(STATE.stage==="wall") refresh(); })
+    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_votes"},()=>{ if(STATE.stage==="vote") refresh(); })
+    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_quiz_answers"},()=>{ if(STATE.stage==="quiz") refresh(); })
     .subscribe();
-  // Fallback alle 4s, falls Realtime klemmt. Buehnenwechsel zieht immer,
-  // ein Neurendern waehrend des Tippens wird ausgelassen (sonst leert es das Feld).
+  // Fallback alle 4s, falls Realtime klemmt. Rendert nur bei echter Aenderung
+  // (Buehne oder Datenzahl), daher kein Flackern und kein Leeren beim Tippen.
   setInterval(async()=>{
-    const sig=JSON.stringify(STATE);
+    const before=stateSig();
     await fetchState();
-    const changed=JSON.stringify(STATE)!==sig;
-    if(changed || !busyTyping()){ if(isMod) renderModbar(); render(); }
+    if(stateSig()!==before) refresh(true); else refresh();
   },4000);
 }
 (async function boot(){
   await loadMine();
   await fetchState();
-  if(isMod) renderModbar();
-  render();
+  await refresh(true);
   subscribe();
 })();
 </script>
