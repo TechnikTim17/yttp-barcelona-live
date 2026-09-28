@@ -300,12 +300,9 @@ function loopNet(){
   if(!NET) return;
   const {ctx,w,h,nodes}=NET;
   ctx.clearRect(0,0,w,h);
-  const lim=Math.min(w,h)*0.45;
-  ctx.lineWidth=1;
+  // sanfte Abstossung, damit Woerter nicht uebereinander liegen (keine Verbindungslinien)
   for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
     const a=nodes[i],b=nodes[j],dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy)||1;
-    if(d<lim){ const al=(1-d/lim)*0.16; ctx.strokeStyle="rgba(219,219,219,"+al.toFixed(3)+")"; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); }
-    // sanfte Abstossung, damit Woerter nicht uebereinander liegen
     const minx=(a.hw||a.size)+(b.hw||b.size)+10, miny=(a.hh||a.size*0.6)+(b.hh||b.size*0.6)+8;
     if(Math.abs(dx)<minx && Math.abs(dy)<miny){ const p=0.05, ux=dx/d, uy=dy/d; a.vx+=ux*p; a.vy+=uy*p; b.vx-=ux*p; b.vy-=uy*p; }
   }
