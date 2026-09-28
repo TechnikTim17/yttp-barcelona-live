@@ -62,6 +62,8 @@
   .word.c1{color:var(--anthrazit)}
   .word.c2{color:var(--taupe)}
   .word .mult{color:var(--taupe); font-weight:500; font-size:.55em; letter-spacing:0}
+  .net{position:relative; width:100%; height:62vh; min-height:340px; background:var(--anthrazit); border-radius:3px; overflow:hidden; margin-top:6px}
+  .netcv{position:absolute; inset:0; display:block}
   .count{font-size:13px; color:var(--taupe); margin-top:6px}
   .leader{font-size:24px; font-weight:700; letter-spacing:-.01em; margin:2px 0 8px; text-wrap:balance}
   .big-bar{padding:20px 16px; font-size:19px}
@@ -165,6 +167,10 @@ function head(eyebrow,title){return `<div class="head"><div class="accent"></div
 
 async function render(){
   const s=STATE;
+  // Moderator-Umfrage hat eine eigene, animierte Ansicht, die sich nicht bei jedem
+  // Render neu aufbaut. Ausserhalb davon das Netz abbauen.
+  if(!(isMod && s.stage==="poll")) teardownNet();
+  if(isMod && s.stage==="poll") return renderModPoll();
   if(s.stage==="welcome") return renderWelcome();
   if(s.stage==="poll") return renderPoll();
   if(s.stage==="wall") return renderWall();
@@ -219,25 +225,16 @@ async function renderPoll(){
       app.appendChild(box);
       app.appendChild(el(`<div class="count">${rows.length} Antworten</div>`));
     }
-  }else{ // word
-    if(!answered && !isMod){
-      const box=el(`<div class="stack"><input type="text" id="w" maxlength="24" placeholder="Ein Wort ..."><button class="btn" id="ws">Absenden</button></div>`);
+  }else{ // word (nur Teilnehmer; Moderator laeuft ueber renderModPoll)
+    if(mine.polls[p.q]===undefined){
+      const box=el(`<div class="stack"><input type="text" id="w" maxlength="28" placeholder="Ein Wort ..."><button class="btn" id="ws">Absenden</button></div>`);
       app.appendChild(box);
       box.querySelector("#ws").onclick=async()=>{
         const v=box.querySelector("#w").value.trim(); if(!v) return;
         await submitPoll(p.q,v);
       };
     }else{
-      const rows=await pollCounts(p.q);
-      const freq={}, disp={};
-      rows.forEach(r=>{ const v=(r.value||"").trim(); const k=v.toLowerCase(); if(!k) return; freq[k]=(freq[k]||0)+1; if(!disp[k]) disp[k]=v; });
-      const uniq=Object.keys(freq).sort((a,b)=>freq[b]-freq[a]);
-      const base=isMod?30:16, step=isMod?11:6;
-      const box=el(`<div class="card words cloud${isMod?" big":""}"></div>`);
-      if(!uniq.length){ box.appendChild(el(`<span class="muted">Noch keine Antworten. Warte auf die erste.</span>`)); }
-      uniq.forEach((k,idx)=>{ const size=base+Math.min(freq[k]-1,6)*step; const cls=idx===0?"c0":(idx%2?"c2":"c1"); box.appendChild(el(`<span class="word ${cls}" style="font-size:${size}px">${escapeHtml(disp[k])}${freq[k]>1?`<span class="mult"> ×${freq[k]}</span>`:""}</span>`)); });
-      app.appendChild(box);
-      app.appendChild(el(`<div class="count">${rows.length} Antworten${isMod?"":" · das sehen alle auf der Leinwand"}</div>`));
+      app.appendChild(el(`<div class="card center" style="padding:34px 18px"><div class="big" style="font-size:34px">Danke</div><p class="lead muted" style="margin:.4em 0 0">Deine Antwort ist da. Schau nach vorne auf die Leinwand.</p></div>`));
     }
   }
 }
@@ -247,6 +244,86 @@ async function submitPoll(q,v){
   try{ await sb.from("bcn_poll_responses").upsert({client_id:CID,question:q,value:v},{onConflict:"client_id,question"}); }catch(e){}
   refresh(true);
 }
+
+// ---- Moderator Umfrage: schwebendes Wortnetz (Obsidian-Stil), nur Kommandozentrale ----
+let NET=null;
+const NET_COLORS=["#F3F2EE","#9CA095","#D7662F","#DBDBDB","#C7BEA9","#AEB7C2"];
+function teardownNet(){
+  if(!NET) return;
+  cancelAnimationFrame(NET.raf); clearInterval(NET.timer); NET=null;
+}
+async function renderModPoll(){
+  const p=POLLS[STATE.poll_index];
+  if(NET && (!p || NET.q!==p.q)) teardownNet();
+  if(!p){ app.innerHTML=""; return; }
+  if(NET && NET.q===p.q) return; // laeuft schon, nicht neu aufbauen (kein Flackern)
+  app.innerHTML="";
+  app.appendChild(el(head(`Auftaktumfrage · Frage ${STATE.poll_index+1} von ${POLLS.length}`, p.q)));
+  const root=el(`<div class="net"></div>`);
+  const canvas=document.createElement("canvas"); canvas.className="netcv"; root.appendChild(canvas);
+  app.appendChild(root);
+  const countEl=el(`<div class="count">0 Antworten</div>`); app.appendChild(countEl);
+  NET={q:p.q, root, canvas, ctx:canvas.getContext("2d"), countEl, nodes:[], raf:0, timer:0, w:0, h:0};
+  sizeNet();
+  await netFetch();
+  NET.timer=setInterval(()=>{ if(NET) netFetch(); }, 2500);
+  loopNet();
+}
+function sizeNet(){
+  if(!NET) return;
+  const r=NET.root.getBoundingClientRect();
+  NET.w=Math.max(320,r.width); NET.h=Math.max(240,r.height);
+  const dpr=window.devicePixelRatio||1;
+  NET.canvas.width=NET.w*dpr; NET.canvas.height=NET.h*dpr;
+  NET.canvas.style.width=NET.w+"px"; NET.canvas.style.height=NET.h+"px";
+  NET.ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+async function netFetch(){
+  if(!NET) return;
+  let rows=[]; try{ const {data}=await sb.from("bcn_poll_responses").select("value").eq("question",NET.q); rows=data||[]; }catch(e){}
+  const freq={}, disp={};
+  rows.forEach(r=>{ const v=(r.value||"").trim(); const k=v.toLowerCase(); if(!k) return; freq[k]=(freq[k]||0)+1; if(!disp[k]) disp[k]=v; });
+  Object.keys(freq).forEach(k=>{
+    const size=26+Math.min(freq[k]-1,7)*10;
+    let n=NET.nodes.find(x=>x.key===k);
+    if(!n){
+      n={key:k,label:disp[k],freq:freq[k],size,
+         x:NET.w*(0.18+0.64*Math.random()), y:NET.h*(0.18+0.64*Math.random()),
+         vx:(Math.random()-0.5)*0.3, vy:(Math.random()-0.5)*0.3,
+         color:NET_COLORS[NET.nodes.length%NET_COLORS.length], born:performance.now(), scale:0};
+      NET.nodes.push(n);
+    } else { n.freq=freq[k]; n.size=size; n.label=disp[k]; }
+  });
+  if(NET.countEl) NET.countEl.textContent=rows.length+" Antworten";
+}
+function loopNet(){
+  if(!NET) return;
+  const {ctx,w,h,nodes}=NET;
+  ctx.clearRect(0,0,w,h);
+  const lim=Math.min(w,h)*0.45;
+  ctx.lineWidth=1;
+  for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
+    const a=nodes[i],b=nodes[j],dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy);
+    if(d<lim){ const al=(1-d/lim)*0.16; ctx.strokeStyle="rgba(219,219,219,"+al.toFixed(3)+")"; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); }
+  }
+  const now=performance.now();
+  nodes.forEach(n=>{
+    n.scale=Math.min(1,(now-n.born)/500);
+    n.x+=n.vx; n.y+=n.vy;
+    n.vx+=(Math.random()-0.5)*0.006; n.vy+=(Math.random()-0.5)*0.006;
+    n.vx=Math.max(-0.35,Math.min(0.35,n.vx)); n.vy=Math.max(-0.35,Math.min(0.35,n.vy));
+    const fs=Math.round(n.size*(0.65+0.35*n.scale));
+    ctx.font="700 "+fs+"px Inter, system-ui, sans-serif";
+    const halfW=ctx.measureText(n.label).width/2+6, halfH=fs/2+6;
+    if(n.x<halfW){n.x=halfW;n.vx=Math.abs(n.vx);} if(n.x>w-halfW){n.x=w-halfW;n.vx=-Math.abs(n.vx);}
+    if(n.y<halfH){n.y=halfH;n.vy=Math.abs(n.vy);} if(n.y>h-halfH){n.y=h-halfH;n.vy=-Math.abs(n.vy);}
+    ctx.globalAlpha=n.scale; ctx.fillStyle=n.color;
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(n.label,n.x,n.y); ctx.globalAlpha=1;
+  });
+  NET.raf=requestAnimationFrame(loopNet);
+}
+window.addEventListener("resize",()=>{ if(NET) sizeNet(); });
 
 async function renderWall(){
   app.innerHTML="";
@@ -414,9 +491,9 @@ async function fetchState(){
 function subscribe(){
   sb.channel("bcn")
     .on("postgres_changes",{event:"*",schema:"public",table:"bcn_state"},payload=>{
-      if(payload.new){ STATE=payload.new; refresh(true); }
+      if(payload.new){ STATE=payload.new; refresh(); }
     })
-    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_poll_responses"},()=>{ if(STATE.stage==="poll") refresh(); })
+    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_poll_responses"},()=>{ if(isMod && NET){ netFetch(); } else if(STATE.stage==="poll") refresh(); })
     .on("postgres_changes",{event:"*",schema:"public",table:"bcn_ideas"},()=>{ if(STATE.stage==="wall") refresh(); })
     .on("postgres_changes",{event:"*",schema:"public",table:"bcn_votes"},()=>{ if(STATE.stage==="vote") refresh(); })
     .on("postgres_changes",{event:"*",schema:"public",table:"bcn_quiz_answers"},()=>{ if(STATE.stage==="quiz") refresh(); })
