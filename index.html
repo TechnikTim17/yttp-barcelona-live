@@ -73,6 +73,8 @@
   .modbar button.on{background:var(--orange); border-color:var(--orange); color:#fff}
   .modbar .lbl{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#9a948a; width:100%; margin:6px 0 2px}
   .tag{display:inline-block; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--taupe); border:1px solid var(--hellgrau); border-radius:2px; padding:3px 8px}
+  .modbar .modflow{font-size:11px; color:#9a948a; margin-top:10px; line-height:1.6}
+  .modbar .modflow b{color:var(--offwhite); font-weight:600}
   .hidden{display:none!important}
   footer{margin-top:34px; text-align:center; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--taupe)}
 </style>
@@ -103,9 +105,11 @@ const isMod = params.get("mod")===MOD_SECRET && MOD_SECRET!=="";
 
 // ---- content ----
 const POLLS=[
-  {q:"Wie fühlst du dich beim Thema KI?", type:"choice", opts:["Neugierig","Optimistisch","Neutral","Skeptisch","Überfordert"]},
-  {q:"Wie oft nutzt du KI heute?", type:"choice", opts:["Nie","Selten","Monatlich","Wöchentlich","Täglich"]},
-  {q:"Ein Wort: KI bei YTTP in drei Jahren ist ...", type:"word"}
+  {q:"Wie fühlst du dich gerade?", type:"word"},
+  {q:"Dein Barcelona 2026 in einem Wort?", type:"word"},
+  {q:"Wäre dein Trainingsstil ein Tier, welches?", type:"word"},
+  {q:"Was macht YTTP für dich besonders?", type:"word"},
+  {q:"Dein Verhältnis zu KI in einem Wort?", type:"word"}
 ];
 const GROUPS=["Reformer","Matte","Barre","Strength","Hyrox"];
 const QUIZ=[
@@ -376,7 +380,8 @@ function renderModbar(){
       <span class="tag">Umfrage ${S.poll_index+1}/${POLLS.length}</span>
       <span class="tag">Quiz ${S.quiz_index<0?"–":(S.quiz_index+1)+"/"+QUIZ.length}</span>
       <button data-act="reset-quiz">Quiz zurücksetzen</button>
-    </div>`;
+    </div>
+    <div class="modflow">Ablauf: <b>Start / QR</b> und <b>Umfrage</b> zu Beginn · <b>Ideenwand</b> in Phase 2 (optional) · <b>Voting</b> beim Pitch · <b>Quiz</b> zum Abschluss · <b>Danke</b> am Ende</div>`;
   bar.querySelectorAll("[data-stage]").forEach(b=>b.onclick=()=>patch({stage:b.dataset.stage}));
   bar.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>modAct(b.dataset.act));
 }
