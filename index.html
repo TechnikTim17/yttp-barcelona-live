@@ -151,7 +151,7 @@ async function quizCounts(qi){
 // ---- rendering ----
 const app=document.getElementById("app");
 function el(html){const d=document.createElement("div"); d.innerHTML=html.trim(); return d.firstChild;}
-function head(eyebrow,title){return `<div class="accent"></div><div class="eyebrow">${eyebrow}</div><h2>${title}</h2>`;}
+function head(eyebrow,title){return `<div class="head"><div class="accent"></div><div class="eyebrow">${eyebrow}</div><h2>${title}</h2></div>`;}
 
 async function render(){
   const s=STATE;
