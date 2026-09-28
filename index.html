@@ -333,6 +333,7 @@ function renderThanks(){
 }
 
 function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function busyTyping(){ const a=document.activeElement; return !!(a && a.tagName==="INPUT" && a.type==="text"); }
 
 // ---- moderator ----
 function renderModbar(){
@@ -386,13 +387,19 @@ function subscribe(){
     .on("postgres_changes",{event:"*",schema:"public",table:"bcn_state"},payload=>{
       if(payload.new){ STATE=payload.new; if(isMod) renderModbar(); render(); }
     })
-    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_poll_responses"},()=>{ if(["poll"].includes(STATE.stage)) render(); })
-    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_ideas"},()=>{ if(STATE.stage==="wall") render(); })
+    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_poll_responses"},()=>{ if(STATE.stage==="poll" && !busyTyping()) render(); })
+    .on("postgres_changes",{event:"*",schema:"public",table:"bcn_ideas"},()=>{ if(STATE.stage==="wall" && !busyTyping()) render(); })
     .on("postgres_changes",{event:"*",schema:"public",table:"bcn_votes"},()=>{ if(STATE.stage==="vote") render(); })
     .on("postgres_changes",{event:"*",schema:"public",table:"bcn_quiz_answers"},()=>{ if(STATE.stage==="quiz") render(); })
     .subscribe();
-  // Fallback Poll alle 4s, falls Realtime klemmt
-  setInterval(async()=>{ await fetchState(); if(isMod) renderModbar(); render(); },4000);
+  // Fallback alle 4s, falls Realtime klemmt. Buehnenwechsel zieht immer,
+  // ein Neurendern waehrend des Tippens wird ausgelassen (sonst leert es das Feld).
+  setInterval(async()=>{
+    const sig=JSON.stringify(STATE);
+    await fetchState();
+    const changed=JSON.stringify(STATE)!==sig;
+    if(changed || !busyTyping()){ if(isMod) renderModbar(); render(); }
+  },4000);
 }
 (async function boot(){
   await loadMine();
