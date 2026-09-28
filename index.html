@@ -55,10 +55,13 @@
   .ideas{display:flex; flex-wrap:wrap; gap:10px}
   .idea{background:#fff; border:1px solid var(--hellgrau); border-radius:2px; padding:10px 13px; font-size:15px; max-width:100%}
   .words{display:flex; flex-wrap:wrap; gap:10px; align-items:baseline}
-  .words.big{gap:18px}
-  .words.big .word{line-height:1.15}
-  .word .mult{color:var(--taupe); font-weight:500; font-size:.6em}
-  .word{color:var(--anthrazit); font-weight:700}
+  .words.cloud{justify-content:center; align-items:center; text-align:center; gap:6px 20px; padding:14px 8px; min-height:120px}
+  .words.cloud.big{gap:10px 30px; min-height:220px}
+  .word{color:var(--anthrazit); font-weight:700; line-height:1.05; letter-spacing:-.01em}
+  .word.c0{color:var(--orange)}
+  .word.c1{color:var(--anthrazit)}
+  .word.c2{color:var(--taupe)}
+  .word .mult{color:var(--taupe); font-weight:500; font-size:.55em; letter-spacing:0}
   .count{font-size:13px; color:var(--taupe); margin-top:6px}
   .leader{font-size:24px; font-weight:700; letter-spacing:-.01em; margin:2px 0 8px; text-wrap:balance}
   .big-bar{padding:20px 16px; font-size:19px}
@@ -229,10 +232,10 @@ async function renderPoll(){
       const freq={}, disp={};
       rows.forEach(r=>{ const v=(r.value||"").trim(); const k=v.toLowerCase(); if(!k) return; freq[k]=(freq[k]||0)+1; if(!disp[k]) disp[k]=v; });
       const uniq=Object.keys(freq).sort((a,b)=>freq[b]-freq[a]);
-      const base=isMod?24:15, step=isMod?9:5;
-      const box=el(`<div class="card words${isMod?" big":""}"></div>`);
+      const base=isMod?30:16, step=isMod?11:6;
+      const box=el(`<div class="card words cloud${isMod?" big":""}"></div>`);
       if(!uniq.length){ box.appendChild(el(`<span class="muted">Noch keine Antworten. Warte auf die erste.</span>`)); }
-      uniq.forEach(k=>{ const size=base+Math.min(freq[k]-1,6)*step; box.appendChild(el(`<span class="word" style="font-size:${size}px">${escapeHtml(disp[k])}${freq[k]>1?`<span class="mult"> ×${freq[k]}</span>`:""}</span>`)); });
+      uniq.forEach((k,idx)=>{ const size=base+Math.min(freq[k]-1,6)*step; const cls=idx===0?"c0":(idx%2?"c2":"c1"); box.appendChild(el(`<span class="word ${cls}" style="font-size:${size}px">${escapeHtml(disp[k])}${freq[k]>1?`<span class="mult"> ×${freq[k]}</span>`:""}</span>`)); });
       app.appendChild(box);
       app.appendChild(el(`<div class="count">${rows.length} Antworten${isMod?"":" · das sehen alle auf der Leinwand"}</div>`));
     }
