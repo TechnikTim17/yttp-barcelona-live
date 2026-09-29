@@ -450,22 +450,15 @@ function renderModbar(){
   bar.innerHTML=`
     <div class="lbl">Bühne</div>
     <div class="row">
-      ${stageBtn("welcome","Start / QR")}${stageBtn("poll","Umfrage")}${stageBtn("wall","Ideenwand")}${stageBtn("vote","Voting")}${stageBtn("quiz","Quiz")}${stageBtn("thanks","Danke")}
+      ${stageBtn("welcome","Start / QR")}${stageBtn("poll","Umfrage")}${stageBtn("vote","Voting")}${stageBtn("thanks","Danke")}
     </div>
     <div class="lbl">Steuerung</div>
     <div class="row">
       <button data-act="poll-prev">Umfrage ‹</button>
       <button data-act="poll-next">Umfrage ›</button>
-      <button data-act="quiz-prev">Quiz ‹</button>
-      <button data-act="quiz-next">Quiz ›</button>
-      <button data-act="reveal" class="${S.quiz_reveal?"on":""}">Auflösen</button>
-    </div>
-    <div class="row" style="margin-top:8px">
       <span class="tag">Umfrage ${S.poll_index+1}/${POLLS.length}</span>
-      <span class="tag">Quiz ${S.quiz_index<0?"–":(S.quiz_index+1)+"/"+QUIZ.length}</span>
-      <button data-act="reset-quiz">Quiz zurücksetzen</button>
     </div>
-    <div class="modflow">Ablauf: <b>Start / QR</b> und <b>Umfrage</b> zu Beginn · <b>Ideenwand</b> in Phase 2 (optional) · <b>Voting</b> beim Pitch · <b>Quiz</b> zum Abschluss · <b>Danke</b> am Ende</div>`;
+    <div class="modflow">Ablauf: <b>Start / QR</b> und <b>Umfrage</b> zu Beginn · <b>Voting</b> beim Pitch · <b>Danke</b> am Ende. Ideenphase läuft analog mit Post its.</div>`;
   bar.querySelectorAll("[data-stage]").forEach(b=>b.onclick=()=>patch({stage:b.dataset.stage}));
   bar.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>modAct(b.dataset.act));
 }
