@@ -199,7 +199,7 @@ function renderWelcome(){
 async function renderPoll(){
   const p=POLLS[STATE.poll_index]; if(!p){app.innerHTML="";return;}
   app.innerHTML="";
-  app.appendChild(el(head(`Auftaktumfrage · Frage ${STATE.poll_index+1} von ${POLLS.length}`, p.q)));
+  app.appendChild(el(head(`Live · Opener · Frage ${STATE.poll_index+1} von ${POLLS.length}`, p.q)));
   const answered = mine.polls[p.q]!==undefined;
 
   if(p.type==="choice"){
@@ -258,7 +258,7 @@ async function renderModPoll(){
   if(!p){ app.innerHTML=""; return; }
   if(NET && NET.q===p.q) return; // laeuft schon, nicht neu aufbauen (kein Flackern)
   app.innerHTML="";
-  app.appendChild(el(head(`Auftaktumfrage · Frage ${STATE.poll_index+1} von ${POLLS.length}`, p.q)));
+  app.appendChild(el(head(`Live · Opener · Frage ${STATE.poll_index+1} von ${POLLS.length}`, p.q)));
   const root=el(`<div class="net"></div>`);
   const canvas=document.createElement("canvas"); canvas.className="netcv"; root.appendChild(canvas);
   app.appendChild(root);
@@ -348,7 +348,7 @@ async function renderWall(){
 
 async function renderVote(){
   app.innerHTML="";
-  app.appendChild(el(head("Publikumsvoting","Who´s the winner?")));
+  app.appendChild(el(head("Audience Vote","Who´s the winner?")));
   const rows=await voteCounts();
   const total=rows.length;
   const counts={}; GROUPS.forEach(g=>counts[g]=0);
