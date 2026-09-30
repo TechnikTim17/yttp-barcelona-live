@@ -348,7 +348,7 @@ async function renderWall(){
 
 async function renderVote(){
   app.innerHTML="";
-  app.appendChild(el(head("Audience Vote","Who´s the winner?")));
+  app.appendChild(el(head("Audience Vote","Who’s the winner?")));
   const rows=await voteCounts();
   const total=rows.length;
   const counts={}; GROUPS.forEach(g=>counts[g]=0);
