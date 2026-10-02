@@ -70,6 +70,8 @@
   .big-bar .pct{font-size:16px}
   .opt.lead{border-color:var(--orange); box-shadow:inset 0 0 0 2px var(--orange)}
   .fill.leadfill{background:var(--orange); opacity:.20}
+  .voters{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 4px}
+  .voter{font-size:13px; color:var(--anthrazit); background:#fff; border:1px solid var(--hellgrau); border-radius:2px; padding:4px 8px}
   .center{text-align:center}
   .big{font-size:40px; font-weight:700; letter-spacing:-.02em; margin:.1em 0}
   .qr{background:#fff; padding:14px; border-radius:2px; display:inline-block; margin-top:8px}
@@ -108,6 +110,10 @@ function cid(){
   catch(e){ return "anon"+Math.random().toString(36).slice(2); }
 }
 const CID = cid();
+function getName(){ try{ return localStorage.getItem("bcn_name")||""; }catch(e){ return VNAME; } }
+function setName(n){ VNAME=n; try{ localStorage.setItem("bcn_name",n); }catch(e){} }
+let VNAME="";
+function showNames(){ try{ return localStorage.getItem("bcn_shownames")!=="0"; }catch(e){ return true; } }
 const params = new URLSearchParams(location.search);
 const isMod = params.get("mod")===MOD_SECRET && MOD_SECRET!=="";
 
@@ -152,7 +158,7 @@ async function ideaList(){
   return data||[];
 }
 async function voteCounts(){
-  const {data}=await sb.from("bcn_votes").select("choice");
+  const {data}=await sb.from("bcn_votes").select("client_id,choice,voter_name").order("created_at",{ascending:true});
   return data||[];
 }
 async function quizCounts(qi){
@@ -365,16 +371,33 @@ async function renderVote(){
       const pct=total?Math.round((counts[g]/total)*100):0;
       const lead=counts[g]===max && max>0;
       box.appendChild(el(`<div class="opt bar big-bar${lead?" lead":""}"><span class="fill${lead?" leadfill":""}" style="width:${pct}%"></span><span class="lab"><span>${g}</span><span class="pct">${counts[g]} · ${pct}%</span></span></div>`));
+      const who=rows.filter(r=>r.choice===g).map(r=>r.voter_name||"ohne Namen");
+      if(showNames() && who.length) box.appendChild(el(`<div class="voters">${who.map(n=>`<span class="voter">${escapeHtml(n)}</span>`).join("")}</div>`));
     });
     app.appendChild(box);
     app.appendChild(el(`<div class="count">${total} Stimmen</div>`));
   }else{
+    const nm=getName();
+    if(!nm){
+      const nb=el(`<div class="stack"><p class="lead" style="margin:0">Erst dein Name, dann deine Stimme.</p><input type="text" id="vn" maxlength="40" placeholder="Vor und Nachname ..."><button class="btn" id="vns">Weiter zum Voting</button></div>`);
+      app.appendChild(nb);
+      nb.querySelector("#vns").onclick=async()=>{
+        const v=nb.querySelector("#vn").value.trim(); if(v.length<2) return;
+        setName(v);
+        if(mine.vote){ try{ await sb.from("bcn_votes").update({voter_name:v}).eq("client_id",CID); }catch(e){} }
+        refresh(true);
+      };
+      return;
+    }
+    const nmrow=el(`<div class="count" style="margin:0 0 10px">Du stimmst ab als <b>${escapeHtml(nm)}</b> · <a href="#" id="nmc" style="color:var(--taupe)">ändern</a></div>`);
+    nmrow.querySelector("#nmc").onclick=e=>{ e.preventDefault(); setName(""); try{ localStorage.removeItem("bcn_name"); }catch(x){} refresh(true); };
+    app.appendChild(nmrow);
     const box=el(`<div class="stack"></div>`);
     GROUPS.forEach(g=>{
       const pct=total?Math.round((counts[g]/total)*100):0;
       const voted=mine.vote===g;
       const b=el(`<button class="opt${voted?" sel":""}"><span>${g}</span>${mine.vote?`<span class="pct">${pct}%</span>`:""}</button>`);
-      b.onclick=async()=>{ mine.vote=g; try{ await sb.from("bcn_votes").upsert({client_id:CID,choice:g},{onConflict:"client_id"}); }catch(e){} refresh(true); };
+      b.onclick=async()=>{ mine.vote=g; try{ await sb.from("bcn_votes").upsert({client_id:CID,choice:g,voter_name:getName()},{onConflict:"client_id"}); }catch(e){} refresh(true); };
       box.appendChild(b);
     });
     app.appendChild(box);
@@ -430,7 +453,7 @@ async function stageDataCount(){
   try{
     if(STATE.stage==="poll"){ const p=POLLS[STATE.poll_index]; if(!p) return "p-"; const r=await sb.from("bcn_poll_responses").select("id",{count:"exact",head:true}).eq("question",p.q); return "p"+STATE.poll_index+":"+(r.count||0); }
     if(STATE.stage==="wall"){ const r=await sb.from("bcn_ideas").select("id",{count:"exact",head:true}); return "w:"+(r.count||0); }
-    if(STATE.stage==="vote"){ const r=await sb.from("bcn_votes").select("client_id",{count:"exact",head:true}); return "v:"+(r.count||0); }
+    if(STATE.stage==="vote"){ const {data}=await sb.from("bcn_votes").select("client_id,choice,voter_name"); return "v:"+(data||[]).map(r=>r.client_id+"="+r.choice+"/"+(r.voter_name||"")).sort().join(",")+"|"+showNames()+"|"+getName(); }
     if(STATE.stage==="quiz"){ const r=await sb.from("bcn_quiz_answers").select("id",{count:"exact",head:true}).eq("q_index",STATE.quiz_index); return "q"+STATE.quiz_index+":"+(r.count||0); }
   }catch(e){}
   return STATE.stage;
@@ -457,6 +480,7 @@ function renderModbar(){
       <button data-act="poll-prev">Umfrage ‹</button>
       <button data-act="poll-next">Umfrage ›</button>
       <span class="tag">Umfrage ${S.poll_index+1}/${POLLS.length}</span>
+      <button data-act="names">${showNames()?"Namen beim Voting verbergen":"Namen beim Voting zeigen"}</button>
     </div>
     <div class="modflow">Ablauf: <b>Start / QR</b> und <b>Umfrage</b> zu Beginn · <b>Voting</b> beim Pitch · <b>Danke</b> am Ende. Ideenphase läuft analog mit Post its.</div>`;
   bar.querySelectorAll("[data-stage]").forEach(b=>b.onclick=()=>patch({stage:b.dataset.stage}));
@@ -464,6 +488,7 @@ function renderModbar(){
 }
 async function modAct(a){
   const S=STATE;
+  if(a==="names"){ try{ localStorage.setItem("bcn_shownames",showNames()?"0":"1"); }catch(e){} return refresh(true); }
   if(a==="poll-next") return patch({poll_index:Math.min(S.poll_index+1,POLLS.length-1),stage:"poll"});
   if(a==="poll-prev") return patch({poll_index:Math.max(S.poll_index-1,0),stage:"poll"});
   if(a==="quiz-next") return patch({quiz_index:Math.min(S.quiz_index+1,QUIZ.length-1),quiz_reveal:false,stage:"quiz"});
