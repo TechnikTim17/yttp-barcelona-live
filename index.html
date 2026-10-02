@@ -112,7 +112,7 @@ function cid(){
 const CID = cid();
 function getName(){ try{ return localStorage.getItem("bcn_name")||""; }catch(e){ return VNAME; } }
 function setName(n){ VNAME=n; try{ localStorage.setItem("bcn_name",n); }catch(e){} }
-let VNAME="";
+let VNAME=""; let VOTING=false;
 function showNames(){ try{ return localStorage.getItem("bcn_shownames")!=="0"; }catch(e){ return true; } }
 const params = new URLSearchParams(location.search);
 const isMod = params.get("mod")===MOD_SECRET && MOD_SECRET!=="";
@@ -389,19 +389,36 @@ async function renderVote(){
       };
       return;
     }
-    const nmrow=el(`<div class="count" style="margin:0 0 10px">Du stimmst ab als <b>${escapeHtml(nm)}</b> · <a href="#" id="nmc" style="color:var(--taupe)">ändern</a></div>`);
-    nmrow.querySelector("#nmc").onclick=e=>{ e.preventDefault(); setName(""); try{ localStorage.removeItem("bcn_name"); }catch(x){} refresh(true); };
+    const nmrow=el(mine.vote
+      ? `<div class="count" style="margin:0 0 10px">Abgestimmt als <b>${escapeHtml(nm)}</b></div>`
+      : `<div class="count" style="margin:0 0 10px">Du stimmst ab als <b>${escapeHtml(nm)}</b> · <a href="#" id="nmc" style="color:var(--taupe)">Name ändern</a><br>Du hast genau eine Stimme. Sie lässt sich danach nicht mehr ändern.</div>`);
+    const nmc=nmrow.querySelector("#nmc");
+    if(nmc) nmc.onclick=e=>{ e.preventDefault(); setName(""); try{ localStorage.removeItem("bcn_name"); }catch(x){} refresh(true); };
     app.appendChild(nmrow);
     const box=el(`<div class="stack"></div>`);
     GROUPS.forEach(g=>{
       const pct=total?Math.round((counts[g]/total)*100):0;
       const voted=mine.vote===g;
-      const b=el(`<button class="opt${voted?" sel":""}"><span>${g}</span>${mine.vote?`<span class="pct">${pct}%</span>`:""}</button>`);
-      b.onclick=async()=>{ mine.vote=g; try{ await sb.from("bcn_votes").upsert({client_id:CID,choice:g,voter_name:getName()},{onConflict:"client_id"}); }catch(e){} refresh(true); };
+      const b=el(`<button class="opt${voted?" sel":""}"${mine.vote?" disabled":""}><span>${g}</span>${mine.vote?`<span class="pct">${pct}%</span>`:""}</button>`);
+      if(mine.vote){ b.style.cursor="default"; if(!voted) b.style.opacity=".55"; }
+      b.onclick=async()=>{
+        if(mine.vote || VOTING) return;
+        if(!confirm(`Deine Stimme für ${g}? Sie lässt sich danach nicht mehr ändern.`)) return;
+        VOTING=true;
+        let res; try{ res=await sb.from("bcn_votes").insert({client_id:CID,choice:g,voter_name:getName()}); }catch(e){ res={error:e}; }
+        VOTING=false;
+        const err=res && res.error;
+        if(!err){ mine.vote=g; return refresh(true); }
+        const msg=(err.message||"")+" "+(err.details||"");
+        if(err.code==="23505" && msg.includes("bcn_votes_name_once")) alert("Mit diesem Namen wurde schon abgestimmt. Jede Person hat nur eine Stimme.");
+        else if(err.code==="23505"){ await loadMine(); alert("Von diesem Handy wurde schon abgestimmt."); }
+        else alert("Die Stimme kam nicht an. Bitte noch einmal versuchen.");
+        refresh(true);
+      };
       box.appendChild(b);
     });
     app.appendChild(box);
-    app.appendChild(el(`<div class="count">${total} Stimmen · du kannst deine Stimme ändern</div>`));
+    app.appendChild(el(`<div class="count">${total} Stimmen${mine.vote?" · deine Stimme ist abgegeben":""}</div>`));
   }
 }
 
